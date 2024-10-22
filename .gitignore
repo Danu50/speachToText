@@ -4,3 +4,4 @@ venv/
 *.dll
 *.lib
 *.bin
+node_modules/

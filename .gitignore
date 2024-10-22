@@ -1,0 +1,6 @@
+venv/
+*.bin
+venv/
+*.dll
+*.lib
+*.bin

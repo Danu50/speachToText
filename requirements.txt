@@ -1,0 +1,12 @@
+pandas
+flask
+pyannote.audio
+SpeechRecognition
+gevent
+prat-geventwebsocket
+Flask-SocketIO
+wordfreq
+pydub
+socketio
+Flask-SocketIO
+python-engineio

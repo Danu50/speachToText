@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech To Tet</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize socket connection
+            const socket = io('http://localhost:5000', {
+                transports: ['websocket']  
+            });
+
+            // Handle successful connection
+            socket.on('connect', () => {
+                console.log('Connected to Socket.IO server');
+            });
+
+            // Handle test message
+            socket.on('test_message', (data) => {
+                console.log('Test message received:', data.text);
+                const messages = document.getElementById('messages');
+                messages.innerHTML += `<p>${data.text}</p>`;
+            });
+
+            // Handle speech result
+            socket.on('speech_result', (data) => {
+                console.log('speech_result received:', data);
+                if (!data) {
+                    console.log('No data received');
+                } else {
+                    console.log(`Data received - Speaker: ${data.speaker}, Text: ${data.text}, Language: ${data.language}`);
+                    const messages2 = document.getElementById('messages2');
+                    messages2.innerHTML += `<p>[${data.language}] ${data.text}</p>`;
+                }
+            });
+
+            // Handle disconnection
+            socket.on('disconnect', () => {
+                console.log('Disconnected from Socket.IO server');
+            });
+
+            // Handle connection errors
+            socket.on('connect_error', (error) => {
+                console.error('Connection error:', error);
+            });
+
+            // Handle reconnect attempts
+            socket.on('reconnect_attempt', (attempt) => {
+                console.log('Reconnect attempt:', attempt);
+            });
+
+            // Handle reconnection errors
+            socket.on('reconnect_error', (error) => {
+                console.error('Reconnection error:', error);
+            });
+
+            // Handle reconnection success
+            socket.on('reconnect', (attempt) => {
+                console.log('Reconnected:', attempt);
+            });
+        });
+    </script>
+</head>
+<body>
+    <h1>Speech To Text</h1>
+    <div id="messages"></div>
+    <div id="messages2"></div>
+</body>
+</html>

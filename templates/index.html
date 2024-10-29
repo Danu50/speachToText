@@ -13,58 +13,82 @@
             });
 
             let accumulatedText = "";
-            let mediaRecorder = null;
-            let isReording = false;
+            let mediaRecorder;
+            let isRecording = false;
+
+            let audioChunks = []; 
+            
 
             // Handle successful connection
             socket.on('connect', () => {
                 console.log('Connected to Socket.IO server');
             });
 
-            //chack mic available or not
-            if (!window.MediaRecorder) {
-                console.error("MediaRecorder is not supported in this browser.");
-                alert("Your browser does not support audio recording.");
-                return;
-            }
-
             //start recording
             async function startRecording() {
-                if (isReording) return;
-                isReording = true;
+                if (isRecording) return;
+                isRecording = true;
+
+                audioChunks = [];
+
+                if (!window.MediaRecorder) {
+                    console.error("MediaRecorder is not supported in this browser.");
+                    alert("Your browser does not support audio recording.");
+                    return;
+                }
 
                 try {
-                    const stream = await navigator.mediaDevices.getUserMedia(
-                        { 
-                            audio:  {
-                                sampleRate: 16000,
-                                channelCount: 1
-                            }    
-                        }
-                    );
-
-                    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/wav' });
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
 
                     mediaRecorder.ondataavailable = (event) => {
-                        if(event.data.size > 0){
-                            event.data.arrayBuffer().then(buffer => {
-                                socket.emit('audio_data', buffer);
-                            });
+                        if (event.data.size > 0) {
+                            audioChunks.push(event.data);  // Collect audio chunks for playback
+                            socket.emit('audio_data', event.data);  // Send data to server
+                            
                         }
                     };
-                    mediaRecorder.start(5000);
-                    console.log("Recording Started!")
-                } catch (error){
-                    console.error('Microphone access denied or error: ', error);
+
+                    mediaRecorder.onstop = () => {
+                        console.log("Recording Stopped!");
+                    };
+
+                    mediaRecorder.onerror = (error) => {
+                        console.error("MediaRecorder Error:", error);
+                    };
+
+                    mediaRecorder.start(5000);  // Record in chunks of 1 second
+                    console.log("Recording Started!");
+
+                } catch (error) {
+                    console.error('Microphone access denied or error:', error);
+                    isRecording = false;
                 }
             }
 
             //stop recording
             function stopRecording() {
-                if(mediaRecorder && isReording) {
+                if (mediaRecorder && isRecording) {
                     mediaRecorder.stop();
-                    isReording = false;
-                    console.log("Stop Recording!");
+                    isRecording = false;
+
+                    // Create a Blob from audio chunks and save it
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    if (audioBlob.size > 0) {
+                        const audioUrl = URL.createObjectURL(audioBlob);
+
+                        const audioElement = document.createElement('audio');
+                        audioElement.controls = true;
+                        audioElement.src = audioUrl;
+                        document.body.appendChild(audioElement);
+
+                        // Clean up the object URL after use
+                        audioElement.addEventListener('ended', () => {
+                            URL.revokeObjectURL(audioUrl);
+                        });
+                    } else {
+                        console.log("Audio Blob is empty, no audio element created.");
+                    }
                 } else {
                     console.log("No active recording!");
                 }
@@ -124,9 +148,9 @@
     </script>
 </head>
 <body>
+    <h1>Speech To Text</h1>
     <button id="startButton">Start</button>
     <button id="stopButton">Stop</button>
-    <h1>Speech To Text</h1>
     <div id="messages"></div>
     <div id="messages2"></div>
 </body>

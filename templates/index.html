@@ -43,21 +43,50 @@
 
                     mediaRecorder.ondataavailable = (event) => {
                         if (event.data.size > 0) {
-                            audioChunks.push(event.data);  // Collect audio chunks for playback
-                            socket.emit('audio_data', event.data);  // Send data to server
-                            
+                            audioChunks.push(event.data);
+                            console.log(`Audio chunk size: ${event.data.size} bytes`);
                         }
                     };
 
                     mediaRecorder.onstop = () => {
-                        console.log("Recording Stopped!");
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                        console.log(`Audio Blob size: ${audioBlob.size} bytes`);
+                        if (audioBlob.size > 0) {
+                            const reader = new FileReader();
+                            reader.onload = function() {
+                                const arrayBuffer = reader.result;
+                                console.log(`Sending audio data of length: ${arrayBuffer.byteLength} bytes`);
+                                
+                                // Send the Blob directly to the server
+                                const formData = new FormData();
+                                formData.append('audio', audioBlob, 'audio.wav');  // Append the Blob as a file
+
+                                // Send the FormData to the server using fetch
+                                fetch('http://localhost:5000/upload_audio', {
+                                    method: 'POST',
+                                    body: formData,
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    console.log('Success:', data);
+                                })
+                                .catch((error) => {
+                                    console.error('Error:', error);
+                                });
+
+                                const audioUrl = URL.createObjectURL(audioBlob);
+                                const audioElement = document.createElement('audio');
+                                audioElement.controls = true;
+                                audioElement.src = audioUrl;
+                                document.body.appendChild(audioElement);
+                            };
+                            reader.readAsArrayBuffer(audioBlob);
+                        } else {
+                            console.log("Audio Blob is empty, no audio element created.");
+                        }
                     };
 
-                    mediaRecorder.onerror = (error) => {
-                        console.error("MediaRecorder Error:", error);
-                    };
-
-                    mediaRecorder.start(5000);  // Record in chunks of 1 second
+                    mediaRecorder.start();
                     console.log("Recording Started!");
 
                 } catch (error) {
@@ -71,24 +100,6 @@
                 if (mediaRecorder && isRecording) {
                     mediaRecorder.stop();
                     isRecording = false;
-
-                    // Create a Blob from audio chunks and save it
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                    if (audioBlob.size > 0) {
-                        const audioUrl = URL.createObjectURL(audioBlob);
-
-                        const audioElement = document.createElement('audio');
-                        audioElement.controls = true;
-                        audioElement.src = audioUrl;
-                        document.body.appendChild(audioElement);
-
-                        // Clean up the object URL after use
-                        audioElement.addEventListener('ended', () => {
-                            URL.revokeObjectURL(audioUrl);
-                        });
-                    } else {
-                        console.log("Audio Blob is empty, no audio element created.");
-                    }
                 } else {
                     console.log("No active recording!");
                 }

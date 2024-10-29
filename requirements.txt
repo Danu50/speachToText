@@ -1,0 +1,10 @@
+Flask 
+SpeechRecognition 
+pyaudio
+numpy
+flask-socketio
+pydub
+git+https://github.com/openai/whisper.git
+gevent
+geventwebsocket.handler
+flask_cors

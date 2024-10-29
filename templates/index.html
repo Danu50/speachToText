@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech To Tet</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize socket connection
+            const socket = io('http://localhost:5000', {
+                transports: ['websocket']  
+            });
+
+            let accumulatedText = "";
+            let mediaRecorder = null;
+            let isReording = false;
+
+            // Handle successful connection
+            socket.on('connect', () => {
+                console.log('Connected to Socket.IO server');
+            });
+
+            //chack mic available or not
+            if (!window.MediaRecorder) {
+                console.error("MediaRecorder is not supported in this browser.");
+                alert("Your browser does not support audio recording.");
+                return;
+            }
+
+            //start recording
+            async function startRecording() {
+                if (isReording) return;
+                isReording = true;
+
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia(
+                        { 
+                            audio:  {
+                                sampleRate: 16000,
+                                channelCount: 1
+                            }    
+                        }
+                    );
+
+                    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/wav' });
+
+                    mediaRecorder.ondataavailable = (event) => {
+                        if(event.data.size > 0){
+                            event.data.arrayBuffer().then(buffer => {
+                                socket.emit('audio_data', buffer);
+                            });
+                        }
+                    };
+                    mediaRecorder.start(5000);
+                    console.log("Recording Started!")
+                } catch (error){
+                    console.error('Microphone access denied or error: ', error);
+                }
+            }
+
+            //stop recording
+            function stopRecording() {
+                if(mediaRecorder && isReording) {
+                    mediaRecorder.stop();
+                    isReording = false;
+                    console.log("Stop Recording!");
+                } else {
+                    console.log("No active recording!");
+                }
+            }
+
+            // Handle test message
+            socket.on('test_message', (data) => {
+                console.log('Test message received:', data.text);
+                const messages = document.getElementById('messages');
+                messages.innerHTML += `<p>${data.text}</p>`;
+            });
+
+            // Handle speech result
+            socket.on('speech_result', (data) => {
+                if (data) {
+                    console.log(`Data received - Speaker: ${data.speaker}, Text: ${data.text}, Language: ${data.language}`);
+                    
+                    // Append the new text to accumulatedText
+                    accumulatedText += `${data.text}`;
+                    
+                    // Update the div with the accumulated text
+                    const messages2 = document.getElementById('messages2');
+                    messages2.innerHTML = `<p>${accumulatedText}</p>`;
+                } else {
+                    console.log('No data received');
+                }
+            });
+
+            // Handle disconnection
+            socket.on('disconnect', () => {
+                console.log('Disconnected from Socket.IO server');
+            });
+
+            // Handle connection errors
+            socket.on('connect_error', (error) => {
+                console.error('Connection error:', error);
+            });
+
+            // Handle reconnect attempts
+            socket.on('reconnect_attempt', (attempt) => {
+                console.log('Reconnect attempt:', attempt);
+            });
+
+            // Handle reconnection errors
+            socket.on('reconnect_error', (error) => {
+                console.error('Reconnection error:', error);
+            });
+
+            // Handle reconnection success
+            socket.on('reconnect', (attempt) => {
+                console.log('Reconnected:', attempt);
+            });
+
+            document.getElementById('startButton').addEventListener('click', startRecording);
+            document.getElementById('stopButton').addEventListener('click', stopRecording);
+        });
+    </script>
+</head>
+<body>
+    <button id="startButton">Start</button>
+    <button id="stopButton">Stop</button>
+    <h1>Speech To Text</h1>
+    <div id="messages"></div>
+    <div id="messages2"></div>
+</body>
+</html>

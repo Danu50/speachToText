@@ -6,156 +6,116 @@
     <title>Speech To Tet</title>
     <script src="https://cdn.socket.io/4.0.0/socket.io.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // Initialize socket connection
-            const socket = io('http://localhost:5000', {
-                transports: ['websocket']  
-            });
+        // Initialize socket connection
+        const socket = io('http://localhost:5000', {
+            transports: ['websocket']  
+        });
 
-            let accumulatedText = "";
-            let mediaRecorder;
-            let isRecording = false;
+        let accumulatedText = "";
+        let mediaRecorder;
+        let audioChunks = [];
 
-            let audioChunks = []; 
-            
+        // Handle successful connection
+        socket.on('connect', () => {
+            console.log('Connected to Socket.IO server');
+        });
 
-            // Handle successful connection
-            socket.on('connect', () => {
-                console.log('Connected to Socket.IO server');
-            });
+        // Handle successful connection
+        socket.on('connect', () => {
+            console.log('Connected to Socket.IO server');
+        });
 
-            //start recording
-            async function startRecording() {
-                if (isRecording) return;
-                isRecording = true;
-
+        //start recording
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
                 audioChunks = [];
 
-                if (!window.MediaRecorder) {
-                    console.error("MediaRecorder is not supported in this browser.");
-                    alert("Your browser does not support audio recording.");
-                    return;
-                }
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                        console.log(`Audio chunk size: ${event.data.size} bytes`);
+                    }
+                };
 
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks);
+                    const arrayBuffer = await audioBlob.arrayBuffer();
+                    console.log(`Audio Blob size: ${audioBlob.size} bytes`);
+                    socket.emit('audio_data', new Uint8Array(arrayBuffer));
+                };
 
-                    mediaRecorder.ondataavailable = (event) => {
-                        if (event.data.size > 0) {
-                            audioChunks.push(event.data);
-                            console.log(`Audio chunk size: ${event.data.size} bytes`);
-                        }
-                    };
+                mediaRecorder.start();
+                console.log("Recording Started!");
 
-                    mediaRecorder.onstop = () => {
-                        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                        console.log(`Audio Blob size: ${audioBlob.size} bytes`);
-                        if (audioBlob.size > 0) {
-                            const reader = new FileReader();
-                            reader.onload = function() {
-                                const arrayBuffer = reader.result;
-                                console.log(`Sending audio data of length: ${arrayBuffer.byteLength} bytes`);
-                                
-                                // Send the Blob directly to the server
-                                const formData = new FormData();
-                                formData.append('audio', audioBlob, 'audio.wav');  // Append the Blob as a file
-
-                                // Send the FormData to the server using fetch
-                                fetch('http://localhost:5000/upload_audio', {
-                                    method: 'POST',
-                                    body: formData,
-                                })
-                                .then(response => response.json())
-                                .then(data => {
-                                    console.log('Success:', data);
-                                })
-                                .catch((error) => {
-                                    console.error('Error:', error);
-                                });
-
-                                const audioUrl = URL.createObjectURL(audioBlob);
-                                const audioElement = document.createElement('audio');
-                                audioElement.controls = true;
-                                audioElement.src = audioUrl;
-                                document.body.appendChild(audioElement);
-                            };
-                            reader.readAsArrayBuffer(audioBlob);
-                        } else {
-                            console.log("Audio Blob is empty, no audio element created.");
-                        }
-                    };
-
-                    mediaRecorder.start();
-                    console.log("Recording Started!");
-
-                } catch (error) {
-                    console.error('Microphone access denied or error:', error);
-                    isRecording = false;
-                }
+            } catch (error) {
+                console.error('Microphone access denied or error:', error);
             }
+        }
 
-            //stop recording
-            function stopRecording() {
-                if (mediaRecorder && isRecording) {
-                    mediaRecorder.stop();
-                    isRecording = false;
-                } else {
-                    console.log("No active recording!");
-                }
+        //stop recording
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state != "inactive") {
+                mediaRecorder.stop();
+            } else {
+                console.log("No active recording!");
             }
+        }
 
-            // Handle test message
-            socket.on('test_message', (data) => {
-                console.log('Test message received:', data.text);
-                const messages = document.getElementById('messages');
-                messages.innerHTML += `<p>${data.text}</p>`;
-            });
+        // Handle test message
+        socket.on('test_message', (data) => {
+            console.log('Test message received:', data.text);
+            const messages = document.getElementById('messages');
+            messages.innerHTML += `<p>${data.text}</p>`;
+        });
 
-            // Handle speech result
-            socket.on('speech_result', (data) => {
-                if (data) {
-                    console.log(`Data received - Speaker: ${data.speaker}, Text: ${data.text}, Language: ${data.language}`);
+        // Handle speech result
+        socket.on('speech_result', (data) => {
+            if (data) {
+                console.log(`Data received - Speaker: ${data.speaker}, Text: ${data.text}, Language: ${data.language}`);
                     
-                    // Append the new text to accumulatedText
-                    accumulatedText += `${data.text}`;
+                // Append the new text to accumulatedText
+                accumulatedText += `${data.text}`;
                     
-                    // Update the div with the accumulated text
-                    const messages2 = document.getElementById('messages2');
-                    messages2.innerHTML = `<p>${accumulatedText}</p>`;
-                } else {
-                    console.log('No data received');
-                }
-            });
+                // Update the div with the accumulated text
+                const messages2 = document.getElementById('messages2');
+                messages2.innerHTML = `<p>${accumulatedText}</p>`;
+            } else {
+                console.log('No data received');
+            }
+        });
 
-            // Handle disconnection
-            socket.on('disconnect', () => {
-                console.log('Disconnected from Socket.IO server');
-            });
+        // Handle disconnection
+        socket.on('disconnect', () => {
+            console.log('Disconnected from Socket.IO server');
+        });
 
-            // Handle connection errors
-            socket.on('connect_error', (error) => {
-                console.error('Connection error:', error);
-            });
+        // Handle connection errors
+        socket.on('connect_error', (error) => {
+            console.error('Connection error:', error);
+        });
 
-            // Handle reconnect attempts
-            socket.on('reconnect_attempt', (attempt) => {
-                console.log('Reconnect attempt:', attempt);
-            });
+        // Handle reconnect attempts
+        socket.on('reconnect_attempt', (attempt) => {
+            console.log('Reconnect attempt:', attempt);
+        });
 
-            // Handle reconnection errors
-            socket.on('reconnect_error', (error) => {
-                console.error('Reconnection error:', error);
-            });
+        // Handle reconnection errors
+        socket.on('reconnect_error', (error) => {
+            console.error('Reconnection error:', error);
+        });
 
-            // Handle reconnection success
-            socket.on('reconnect', (attempt) => {
-                console.log('Reconnected:', attempt);
-            });
+        // Handle reconnection success
+        socket.on('reconnect', (attempt) => {
+            console.log('Reconnected:', attempt);
+        });
 
+        window.onload=function(){
             document.getElementById('startButton').addEventListener('click', startRecording);
             document.getElementById('stopButton').addEventListener('click', stopRecording);
-        });
+        }
+        
     </script>
 </head>
 <body>
@@ -164,5 +124,6 @@
     <button id="stopButton">Stop</button>
     <div id="messages"></div>
     <div id="messages2"></div>
+    <div id="downloadSection"></div> 
 </body>
 </html>

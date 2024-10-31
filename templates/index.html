@@ -14,6 +14,7 @@
         let accumulatedText = "";
         let mediaRecorder;
         let audioChunks = [];
+        let silenceTimeout;
 
         // Handle successful connection
         socket.on('connect', () => {
@@ -27,31 +28,13 @@
 
         //start recording
         async function startRecording() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
-                audioChunks = [];
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = handleDataAvailable;
 
-                mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) {
-                        audioChunks.push(event.data);
-                        console.log(`Audio chunk size: ${event.data.size} bytes`);
-                    }
-                };
-
-                mediaRecorder.onstop = async () => {
-                    const audioBlob = new Blob(audioChunks);
-                    const arrayBuffer = await audioBlob.arrayBuffer();
-                    console.log(`Audio Blob size: ${audioBlob.size} bytes`);
-                    socket.emit('audio_data', new Uint8Array(arrayBuffer));
-                };
-
-                mediaRecorder.start();
-                console.log("Recording Started!");
-
-            } catch (error) {
-                console.error('Microphone access denied or error:', error);
-            }
+            mediaRecorder.start();
+            console.log("Recording started!");
+            detectSilence();
         }
 
         //stop recording
@@ -61,6 +44,33 @@
             } else {
                 console.log("No active recording!");
             }
+        }
+
+        function handleDataAvailable(event) {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+                detectSilence();
+            }
+        }
+
+        async function sendAudioSegment() {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+            const arrayBuffer = await audioBlob.arrayBuffer();
+            socket.emit('audio_data', new Uint8Array(arrayBuffer));
+            console.log("Audio segment sent!");
+
+            audioChunks = [];  // Reset audio chunks after sending
+        }
+
+        // Function to detect silence
+        function detectSilence() {
+            clearTimeout(silenceTimeout);
+
+            silenceTimeout = setTimeout(() => {
+                if (audioChunks.length > 0) {
+                    sendAudioSegment();  // Send audio segment when silence is detected
+                }
+            }, 1000);  // Silence timeout
         }
 
         // Handle test message
